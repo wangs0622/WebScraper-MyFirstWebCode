@@ -1,0 +1,110 @@
+#!/python
+# _*_ coding:utf-8 _*_
+'''
+time : 2017-5-12
+author: wangs0622 （奔跑的笤帚把子）
+email: wangs0622@126.com
+introduction: This program is encoded by python, which version is 2.7.12. I am learning web scrape with python, so I write this program to do something fun.
+            the website we crawle is 'www.ugrils.com', which has a lot of fun photos.
+            we crawel from this site:http://www.ugirls.com/Content/List/Magazine-1.html.  
+            And we can find we just only need to change the last number to visit different site. For example: http://www.ugirls.com/Content/List/Magazine-38.html
+            In each site, we just download the photo's link like this:http://img.youguoquan.com/uploads/magazine/sample/2017/05/10/b5d49aa7eceadf10518d00b28db2cfe1.jpg
+            (sorry, my English is not very good)
+refenence: " web scraping with python"--Richard Lawson
+Ps: If you have any good idea or advise, please contact me.
+'''
+import re
+import urlparse
+import urllib2
+import time
+from datetime import datetime
+import urllib
+import itertools
+
+class Throttle:
+    """Throttle downloading by sleeping between requests to same domain
+    """
+    def __init__(self, delay):
+        # amount of delay between downloads for each domain
+        self.delay = delay
+        # timestamp of when a domain was last accessed
+        self.domains = {}
+        
+    def wait(self, url):
+        domain = urlparse.urlparse(url).netloc
+        last_accessed = self.domains.get(domain)
+
+        if self.delay > 0 and last_accessed is not None:
+            sleep_secs = self.delay - (datetime.now() - last_accessed).seconds
+            if sleep_secs > 0:
+                time.sleep(sleep_secs)
+        self.domains[domain] = datetime.now()
+
+
+def download(url, headers={}, proxy=None, num_retries=2, data=None):
+    print 'Downloading:', url
+    request = urllib2.Request(url, data, headers)
+    opener = urllib2.build_opener()
+    if proxy:
+        proxy_params = {urlparse.urlparse(url).scheme: proxy}
+        opener.add_handler(urllib2.ProxyHandler(proxy_params))
+    try:
+        response = opener.open(request)
+        html = response.read()
+        code = response.code
+    except urllib2.URLError as e:
+        print 'Download error:', e.reason
+        html = ''
+        if hasattr(e, 'code'):
+            code = e.code
+            if num_retries > 0 and 500 <= code < 600:
+                # retry 5XX HTTP errors
+                return download(url, headers, proxy, num_retries-1, data)
+        else:
+            code = None
+    return html
+
+
+def get_links(html):
+    """Return a list of links from html 
+    """
+    # a regular expression to extract all links from the webpage
+    webpage_regex = re.compile(r'http://img.youguoquan.com/uploads/magazine/content/.*?\.jpg', re.IGNORECASE)
+    # list of all links from the webpage
+    return webpage_regex.findall(html)
+
+def get_error_link(html):
+    webpage_regex = re.compile(r'/images/Common/404_img.png', re.IGNORECASE)
+    return webpage_regex.findall(html)
+
+def iteration(delay=2):
+    max_errors = 10 # maximum number of consecutive download errors allowed
+    num_errors = 0 # current number of consecutive download errors
+    throttle = Throttle(delay)
+    n = 1
+    for page in itertools.count(1):
+#        
+        url = 'http://www.ugirls.com/Content/List/Magazine-%d.html' %page
+        html = download(url)
+        
+        if get_error_link(html) is None:
+            # received an error trying to download this webpage
+            num_errors += 1
+            if num_errors == max_errors:
+                # reached maximum amount of errors in a row so exit
+                break
+            # so assume have reached the last country ID and can stop downloading
+        else:
+            # success - can scrape the result
+            # ...
+            num_errors = 0
+        linklist=get_links(html)
+        for link in linklist:
+            print(link)
+            throttle.wait(link)
+            urllib.urlretrieve(link,'F:\python\photo1\%d.jpg' %n)
+            n+=1
+            
+if __name__ == '__main__':
+    iteration()
+    
